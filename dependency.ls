@@ -1,4 +1,30 @@
 
+  fail = (message, errorlevel, error) !->
+
+    write = -> WScript.StdErr.Write [ (arg) for arg in arguments ] * ' '
+    writeln = -> write '\n' ; write ...
+
+    write-kv = (k, v) -> writeln "#k: #v"
+
+    write message
+
+    for k,v of error
+
+      switch k
+
+        | 'number' =>
+
+          # https://web.archive.org/web/20240709175529/https://learn.microsoft.com/en-us/windows/win32/api/winerror/nf-winerror-hresult_facility
+
+          # extract facility code and error code from HRESULT
+
+          write-kv \facility, (v .>>. 16) .&. 0x1fff
+          write-kv \number, v .&. 0xffff
+
+        else write-kv k, v
+
+    WScript.Quit errorlevel
+
   dependency = do ->
 
     WScript.Arguments.Unnamed
@@ -191,7 +217,8 @@
 
           throw new Error "Dependency file '#dependency-full-path' not found."
 
-        eval get-content dependency-full-path
+        try eval get-content dependency-full-path
+        catch => fail "Unable to load dependency '#qualified-dependency-name' (#dependency-full-path)", 2, e
 
       {
         build-dependency
@@ -230,8 +257,18 @@
 
     if argc > 0
 
-      script-source = get-content argv.0
+      script-path = argv.0
 
-      eval script-source
+      failure = null
+
+      try script-source = get-content script-path
+      catch => failure = message: "Unable to read script '#script-path'", error: e
+
+      unless failure?
+
+        try eval script-source
+        catch => failure = message: "Unable to execute script '#script-path'", error: e
+
+      if failure? then failure => fail ..message, 1, ..error
 
     dependency
